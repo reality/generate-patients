@@ -20,25 +20,42 @@ def pCount = Integer.parseInt(args[1]) // number of patients per disease
 def rnd = new Random()
 
 // Get IDs
-def ids = new File(A_FILE).text.split('\n').collect { if(it.indexOf('OMIM') != -1) { it.split('\t')[1] } }
-ids.removeAll([null])
-println ids
+def omims = [:]
+new File(A_FILE).text.split('\n').each { 
+  if(it.indexOf('OMIM') != -1) { 
+    it = it.split('\t')
+    if(!omims.containsKey(it[1])) { omims[it[1]] = [] }
+    omims[it[1]] << it[4]
+  } 
+}
+def ids = omims.keySet().collect()
 
 // Generate patients
 def simulator = new AnnotationSimulator(O_FILE, A_FILE, OntologyProjectType.HPO);
 
-results = []
-(1..dCount).each { 
+results = [:]
+(0..dCount).each { 
   def idx = rnd.nextInt(ids.size())
   def id = ids[idx]
 
-  results += simulator.simulatePatients(ItemDatabase.OMIM, id, pCount, 0.2, 0.4, 2, 10);
+  results[id] = simulator.simulatePatients(ItemDatabase.OMIM, id, pCount, 0.2, 0.4, 2, 10);
 }
 
-results = results.flatten()
+def c = 0
+println "ptid\tannotation\tdisease"
+results.each { id, pts ->
+  pts.each { hpos ->
+    hpos.each { hp ->
+      println "$c\t$hp.id\tOMIM:${id}_PATIENT"
+    }
 
-// Output
-def json = JsonOutput.toJson(results)
-new File('results.json').write(json)
+    c++
+  }
+
+  omims[id].each { hpo ->
+    println "N/A\t$hpo\tOMIM:${id}_DEFINITION"
+  }
+}
+
 
 println 'Done'
