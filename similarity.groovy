@@ -33,7 +33,12 @@ def aMap = [:]
 def cList = []
 new File('patients.tsv').splitEachLine('\t') {
   if(!aMap.containsKey(it[2])) { aMap[it[2]] = [] }
-  aMap[it[2]] << 'http://purl.obolibrary.org/obo/' + it[1].replace(':', '_')
+
+  def cls = 'http://purl.obolibrary.org/obo/' + it[1].replace(':', '_')
+  aMap[it[2]] << cls
+  if(!cList.contains(cls)) {
+    cList << cls
+  }
 }
 new File('phenotype_annotation.tab').splitEachLine('\t') {
   if(it[0] != 'OMIM') { return; }
@@ -75,22 +80,30 @@ def smConf = new SMconf(SMConstants.FLAG_SIM_PAIRWISE_DAG_NODE_RESNIK_1995, icCo
 def engine = new SM_Engine(g)
 
 def i = 0
-ConcurrentHashMap cSim = new ConcurrentHashMap()
+//ConcurrentHashMap cSim = new ConcurrentHashMap()
+def cSim = [:]
 GParsPool.withPool(4) { p ->
-  cList.eachParallel { u1 ->
+  cList.each { u1 ->
     i++
-    println "${i}/${cList.size()}"
+    println "${i}/${cList.size()} : $u1"
 
     cSim[u1] = [:]
     cList.each { u2 ->
-      cSim[u1][u2] = engine.compare(smConf, factory.getURI(u1), factory.getURI(u2))
+      if(cSim.containsKey(u2) && cSim[u2].containsKey(u1)) {
+        cSim[u1][u2] = cSim[u2][u1]
+      } else {
+        cSim[u1][u2] = engine.compare(smConf, factory.getURI(u1), factory.getURI(u2))
+      }
     }
   }
 }
 
+println 'done'
+
 def out = [] 
 GParsPool.withPool(4) { p ->
   aMap.eachParallel { g1, u1 ->
+    println g1
     def aList = []
     aMap.each { g2, u2 ->
       aList << [
