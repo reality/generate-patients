@@ -25,6 +25,10 @@ import slib.sml.sm.core.utils.SMconf;
 import slib.utils.ex.SLIB_Exception;
 import slib.utils.impl.Timer;
 
+import groovyx.gpars.*
+import java.util.concurrent.*
+import java.util.concurrent.atomic.*
+
 def aMap = [:]
 def cList = []
 new File('patients.tsv').splitEachLine('\t') {
@@ -37,10 +41,14 @@ new File('phenotype_annotation.tab').splitEachLine('\t') {
 
   def cls = 'http://purl.obolibrary.org/obo/' + it[4].replace(':', '_')
   aMap[it[5]] << cls
-  cList << cls
+  if(!cList.contains(cls)) {
+    cList << cls
+  }
 }
 
-def ontoFile = 'hp.owl'
+println aMap
+
+def ontoFile = 'hp_merged.owl'
 
 def factory = URIFactoryMemory.getSingleton()
 def graphURI = factory.getURI('http://graph/')
@@ -66,31 +74,38 @@ def smConf = new SMconf(SMConstants.FLAG_SIM_PAIRWISE_DAG_NODE_RESNIK_1995, icCo
 
 def engine = new SM_Engine(g)
 
-def cSim = [:] // class similarity
-cList.eachWithIndex { u1, i ->
-  println "${i}/${cList.size()}"
-  cSim[u1] = [:]
-  cList.each { u2 ->
-    cSim[u1][u2] = engine.compare(smConf, factory.getURI(u1), factory.getURI(u2))
+def i = 0
+ConcurrentHashMap cSim = new ConcurrentHashMap()
+GParsPool.withPool(4) { p ->
+  cList.eachParallel { u1 ->
+    i++
+    println "${i}/${cList.size()}"
+
+    cSim[u1] = [:]
+    cList.each { u2 ->
+      cSim[u1][u2] = engine.compare(smConf, factory.getURI(u1), factory.getURI(u2))
+    }
   }
 }
 
 def out = [] 
-aMap.each { g1, u1 ->
-  def aList = []
-  aMap.each { g2, u2 ->
-    aList << [
-      g2,
-      ((u1.inject(0) { sum, uri ->
-        sum += u2.collect { uri2 -> cSim[uri][uri2] }.max()
-      } + u2.inject(0) { sum, uri ->
-        sum += u1.collect { uri2 -> cSim[uri][uri2] }.max()
-      }) / (u1.size() + u2.size()))
-    ]
-  }
-  aList = aList.toSorted { it[1] }.reverse()
-  aList.each { 
-    out << g1 + ',' + it[0] + ',' + it[1]
+GParsPool.withPool(4) { p ->
+  aMap.eachParallel { g1, u1 ->
+    def aList = []
+    aMap.each { g2, u2 ->
+      aList << [
+        g2,
+        ((u1.inject(0) { sum, uri ->
+          sum += u2.collect { uri2 -> cSim[uri][uri2] }.max()
+        } + u2.inject(0) { sum, uri ->
+          sum += u1.collect { uri2 -> cSim[uri][uri2] }.max()
+        }) / (u1.size() + u2.size()))
+      ]
+    }
+    aList = aList.toSorted { it[1] }.reverse()
+    aList.each { 
+      out << g1 + ',' + it[0] + ',' + it[1]
+    }
   }
 }
 
