@@ -46,14 +46,10 @@ println "ptid\tannotation\tdisease"
 results.each { id, pts ->
   pts.each { hpos ->
     hpos.each { hp ->
-      println "$c\t$hp.id\tOMIM:${id}_PATIENT"
+      println "$c\t$hp.id\tOMIM:${id}_PATIENT_$c"
     }
 
     c++
-  }
-
-  omims[id].each { hpo ->
-    println "N/A\t$hpo\tOMIM:${id}_DEFINITION"
   }
 }
 
